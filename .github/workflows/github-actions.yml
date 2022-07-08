@@ -1,0 +1,117 @@
+name: CI sunvox-cl
+on: [push, pull_request]
+jobs:
+  Build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            package_ext: '*'
+          - os: ubuntu-latest
+            package_ext: tar.gz
+          - os: macos-latest
+            package_ext: tar.gz
+    runs-on: ${{ matrix.os }}
+    outputs:
+      version: ${{ steps.sunvoxcl_version.outputs.version }}
+    steps:
+      - run: echo "☁️ This job is now running on a ${{ runner.os }} server hosted by GitHub!"
+
+      - name: Check out
+        uses: actions/checkout@v3
+        with:
+            path: sunvox-cl
+
+      - name: Install Free Pascal Compiler (apt-get)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install fpc
+
+      - name: Install Free Pascal Compiler (brew)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install fpc
+
+      - name: Install GNU Core Utils (choco)
+        if: runner.os == 'Windows'
+        run: choco install gnuwin32-coreutils.install
+
+      - name: Install Free Pascal Compiler (choco)
+        if: false && (runner.os == 'Windows')
+        run: |
+          choco install freepascal
+          refreshenv
+
+      - name: Workaround for missed PATH settings (choco)
+        if: false && (runner.os == 'Windows')
+        run: echo "C:\\tools\\freepascal\\bin\\i386-win32" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install Free Pascal Compiler (visualdoj/setup-fpc)
+        if: (runner.os == 'Windows') && (steps.cache_fpc_installation_path.outputs.cache-hit != 'true')
+        uses: visualdoj/setup-fpc@v0.1.11-beta
+
+      # We need this step in case if previous step skipped due to caching
+      # Caching cannot be moved to the setup-fpc action because of lack of
+      # condition supporting in composite actions
+      # See https://github.com/actions/runner/issues/646 for details
+      - name: Update PATH
+        if: (runner.os == 'Windows')
+        run: echo ${{ github.workspace }}\.fpc\release_3_2_2\bin\i386-win32 | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        shell: powershell
+
+      - name: Print Free Pascal Version
+        run: fpc -i
+
+      - name: Generate Free Pascal Config
+        if: runner.os == 'Windows'
+        working-directory: ${{ github.workspace }}/sunvox-cl
+        run: fpcmkcfg -d basepath=${{ github.workspace }}\.fpc\release_3_2_2 -o ${{ github.workspace }}\.fpc\release_3_2_2\bin\i386-win32\fpc.cfg 
+
+      - name: 🔨 Build sunvox-cl
+        working-directory: ${{ github.workspace }}/sunvox-cl
+        run: make build
+
+      - name: 📋 Print sunvox-cl version
+        id: sunvoxcl_version
+        working-directory: ${{ github.workspace }}/sunvox-cl
+        run: |
+            bin/sunvox-cl --version
+            echo "::set-output name=version::$(bin/sunvox-cl --short-version)"
+            echo "::set-output name=artifact::sunvox-cl-$(bin/sunvox-cl --short-version)-${{ runner.os }}-x64"
+            echo "::set-output name=package::sunvox-cl-${{ runner.os }}-x64"
+
+      - name: 📦 Make package
+        working-directory: ${{ github.workspace }}
+        run: |
+            mkdir "${{ steps.sunvoxcl_version.outputs.package }}"
+            mkdir "${{ steps.sunvoxcl_version.outputs.package }}/bin"
+            cp sunvox-cl/bin/sunvox-cl* "${{ steps.sunvoxcl_version.outputs.package }}/bin/"
+            tar -czvf "${{ steps.sunvoxcl_version.outputs.package }}.tar.gz" ${{ steps.sunvoxcl_version.outputs.package }}/*
+
+      - name: 🤐 Zip it
+        uses: thedoctor0/zip-release@main
+        with:
+            type:      'zip'
+            directory: ${{ github.workspace }}
+            filename:  ${{ steps.sunvoxcl_version.outputs.package }}.zip
+            path:      ${{ steps.sunvoxcl_version.outputs.package }}
+
+      - name: 🛪 Upload tarball
+        uses: actions/upload-artifact@v3
+        with:
+          name: "${{ steps.sunvoxcl_version.outputs.artifact }}.tar.gz"
+          path: "${{ github.workspace }}/${{ steps.sunvoxcl_version.outputs.package }}.tar.gz"
+
+      - name: 🛪 Upload zip
+        uses: actions/upload-artifact@v3
+        with:
+          name: "${{ steps.sunvoxcl_version.outputs.artifact }}.zip"
+          path: "${{ github.workspace }}/${{ steps.sunvoxcl_version.outputs.package }}.zip"
+
+      - name: 🏁 Upload binaries to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: svenstaro/upload-release-action@v2
+        with:
+          file: "${{ steps.sunvoxcl_version.outputs.package }}.${{ matrix.package_ext }}"
+          file_glob: true

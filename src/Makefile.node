@@ -1,0 +1,13 @@
+#
+#  Regular node makefile, must be in every non-root directory
+#
+#      Changes:
+#        2013.04.04: using patsubst & dir instead of appending ../
+
+ifeq ($(ROOTDIR),)
+  ROOTDIR := $(dir $(CURDIR))
+endif
+
+ROOTDIR := $(patsubst %/,%,$(dir $(ROOTDIR)))
+
+include $(ROOTDIR)/Makefile.node
