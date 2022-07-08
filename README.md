@@ -1,3 +1,5 @@
+[![CI sunvox-cl](https://github.com/visualdoj/sunvox-cl/actions/workflows/github-actions.yml/badge.svg)](https://github.com/visualdoj/sunvox-cl/actions/workflows/github-actions.yml)
+
 # sunvox-cl
 
 Unofficial command line tool for working with `.sunvox` files.
